@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1422">
+<meta name="description" content="Rotate the wires to get power to every house before the next stage of loadshedding hits.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<title>Loadshedding Lights</title>
+</head>
+<body>
+<style>
+/* Layout: one-screen phone game. Header = prepaid-meter LCD countdown, middle = square wire grid, footer = controls. Night suburb at dusk. */
+:root {
+  color-scheme: dark;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box;
+  --night: #0e1422;
+  --night-2: #151d30;
+  --panel: #1b2540;
+  --wire-off: #3b4865;
+  --casing: #090d17;
+  --live: #ffc63a;
+  --live-soft: rgba(255, 198, 58, .35);
+  --danger: #ff5d4f;
+  --text: #eaeef6;
+  --muted: #8d9ab3;
+  --lcd-bg: #16240f;
+  --lcd-ink: #a6ec6c;
+  --font-display: "Bungee", "Arial Black", Impact, sans-serif;
+  --font-body: "Barlow", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-lcd: "Share Tech Mono", "Courier New", monospace;
+}
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body {
+  background: radial-gradient(120% 80% at 50% 0%, #1d2947 0%, var(--night) 60%) fixed, var(--night);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--live); outline-offset: 2px; }
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+
+/* ---------- HUD ---------- */
+.hud { width: var(--board); display: flex; gap: 10px; align-items: stretch; }
+.lvl {
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 6px 12px; border-radius: 10px; background: var(--panel); min-width: 62px;
+}
+.lvl small { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.lvl b { font-family: var(--font-display); font-size: 22px; line-height: 1; font-weight: 400; }
+.meter {
+  flex: 1; border-radius: 10px; padding: 7px 12px 9px;
+  background: var(--lcd-bg); border: 2px solid #26381c;
+  box-shadow: inset 0 0 14px rgba(0,0,0,.6);
+  font-family: var(--font-lcd); color: var(--lcd-ink);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.meter-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+.meter-time { font-size: 26px; line-height: 1; letter-spacing: .06em; font-variant-numeric: tabular-nums; text-shadow: 0 0 6px rgba(166,236,108,.5); }
+.bar { height: 5px; background: rgba(166,236,108,.15); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 100%; background: var(--lcd-ink); transform-origin: left; }
+.meter.urgent { color: var(--danger); border-color: #4a1d18; background: #2a0f0c; }
+.meter.urgent .meter-time { text-shadow: 0 0 8px rgba(255,93,79,.6); animation: blink 1s steps(2) infinite; }
+.meter.urgent .bar i { background: var(--danger); }
+@keyframes blink { 50% { opacity: .45; } }
+
+/* ---------- Board ---------- */
+.board-wrap { flex: 1; display: grid; place-items: center; min-height: 0; width: 100%; }
+.board {
+  width: var(--board); height: var(--board);
+  display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px;
+  padding: 6px; box-sizing: border-box; border-radius: 14px;
+  background: var(--night-2);
+  box-shadow: 0 0 0 1px #24304d, 0 18px 40px rgba(0,0,0,.45);
+}
+.tile {
+  position: relative; border: 0; padding: 0; border-radius: 8px;
+  background: #121a2c; overflow: hidden;
+}
+.tile:active { background: #18223a; }
+.tile svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.tile .arms { transition: transform .16s ease-out; }
+.tile .core { stroke: var(--wire-off); transition: stroke .2s; }
+.tile.on .core { stroke: var(--live); filter: drop-shadow(0 0 3px var(--live-soft)); }
+.tile.on { background: #1a2034; }
+.tile .win { fill: #2a3450; transition: fill .25s; }
+.tile.on .win { fill: var(--live); }
+.tile.on .glow { opacity: 1; }
+.glow { opacity: 0; transition: opacity .3s; }
+.board.dark .tile .core { stroke: #263049 !important; filter: none !important; }
+.board.dark .tile .win { fill: #1c2438 !important; }
+.board.dark .glow { opacity: 0 !important; }
+
+/* ---------- Footer ---------- */
+.foot { width: var(--board); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.count { font-weight: 700; font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.count b { color: var(--live); font-size: 18px; }
+.btns { display: flex; gap: 8px; }
+.icon-btn {
+  border: 0; background: var(--panel); border-radius: 10px; height: 42px; min-width: 42px; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 14px;
+}
+.icon-btn svg { width: 20px; height: 20px; }
+
+/* ---------- Overlays ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 20;
+  display: grid; place-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 11, 20, .78); backdrop-filter: blur(3px);
+}
+.card {
+  width: min(360px, 100%); background: var(--panel); border-radius: 18px; padding: 24px 22px 22px;
+  display: flex; flex-direction: column; gap: 14px; text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,.5);
+  animation: pop .28s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes pop { from { transform: scale(.85); opacity: 0; } }
+.card h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 26px; line-height: 1.1; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); line-height: 1.45; }
+.stars { display: flex; justify-content: center; gap: 8px; }
+.stars svg { width: 42px; height: 42px; }
+.stars .s-on { fill: var(--live); filter: drop-shadow(0 0 6px var(--live-soft)); }
+.stars .s-off { fill: #2c3654; }
+.primary {
+  border: 0; border-radius: 12px; padding: 14px 18px; background: var(--live); color: #231a00;
+  font-family: var(--font-display); font-size: 18px; letter-spacing: .02em;
+  box-shadow: 0 6px 0 #b8841a;
+}
+.primary:active { transform: translateY(3px); box-shadow: 0 3px 0 #b8841a; }
+.ghost { border: 0; background: transparent; color: var(--muted); font-weight: 600; padding: 8px; }
+.overlay.fail .card h2 { color: var(--danger); }
+
+/* ---------- Title screen ---------- */
+.title-screen { background: var(--night); backdrop-filter: none; overflow-y: auto; }
+.title-inner { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center; }
+.logo { font-family: var(--font-display); font-weight: 400; margin: 0; line-height: .95; font-size: clamp(38px, 12vw, 56px); text-wrap: balance; }
+.logo span { display: block; }
+.logo .l1 { color: var(--muted); font-size: .62em; letter-spacing: .04em; }
+.logo .l2 { color: var(--live); text-shadow: 0 0 18px rgba(255,198,58,.45); animation: flicker 4s infinite; }
+@keyframes flicker { 0%, 62%, 66%, 70%, 100% { opacity: 1; } 64%, 68% { opacity: .35; } }
+.skyline { width: 100%; height: auto; }
+.tagline { margin: 0; color: var(--muted); line-height: 1.45; max-width: 32ch; }
+.levels-h { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 4px 0 -8px; }
+.levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; }
+.lv {
+  border: 0; border-radius: 10px; background: var(--panel); padding: 8px 0 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: var(--font-display); font-size: 18px;
+}
+.lv small { font-family: var(--font-body); font-size: 11px; color: var(--live); letter-spacing: 1px; min-height: 14px; }
+.lv[disabled] { opacity: .35; cursor: default; }
+.lv.current { box-shadow: 0 0 0 2px var(--live); }
+
+/* ---------- Celebration ---------- */
+.tile.party { animation: party .55s ease-out both; animation-delay: var(--d, 0ms); }
+@keyframes party {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14) rotate(-3deg); background: #4a3a10; box-shadow: 0 0 18px rgba(255,198,58,.7); }
+  70% { transform: scale(.97) rotate(2deg); }
+  100% { transform: scale(1); }
+}
+.board.celebrate { animation: boardGlow 1.2s ease-out; }
+@keyframes boardGlow { 30% { box-shadow: 0 0 0 2px var(--live), 0 0 50px rgba(255,198,58,.55); } }
+.stars svg { animation: starIn .45s cubic-bezier(.2,1.7,.4,1) both; }
+.stars svg:nth-child(1) { animation-delay: .15s; }
+.stars svg:nth-child(2) { animation-delay: .45s; }
+.stars svg:nth-child(3) { animation-delay: .75s; }
+@keyframes starIn { from { transform: scale(0) rotate(-120deg); opacity: 0; } }
+.overlay.win .card h2 { color: var(--live); animation: bounce .7s .1s both; }
+@keyframes bounce { 0% { transform: scale(.3); } 55% { transform: scale(1.15); } 75% { transform: scale(.95); } 100% { transform: scale(1); } }
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile .arms, .card, .logo .l2, .meter.urgent .meter-time, .tile.party, .stars svg, .board.celebrate, .overlay.win .card h2 { transition: none !important; animation: none !important; }
+}
+</style>
+
+<div class="app" id="app">
+  <div class="hud">
+    <div class="lvl"><small>Level</small><b id="lvl">1</b></div>
+    <div class="meter" id="meter">
+      <div class="meter-top"><span id="stageLbl">Stage 1 in</span><span>Prepaid</span></div>
+      <div class="meter-time" id="time">1:00</div>
+      <div class="bar"><i id="bar"></i></div>
+    </div>
+  </div>
+  <div class="board-wrap"><div class="board" id="board" aria-label="Wire grid"></div></div>
+  <div class="foot">
+    <div class="count"><b id="lit">0</b> / <span id="total">0</span> houses lit</div>
+    <div class="btns">
+      <button class="icon-btn" id="soundBtn" aria-label="Sound on">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path id="waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>
+      </button>
+      <button class="icon-btn" id="restartBtn" aria-label="Restart level">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+      <button class="icon-btn" id="menuBtn">Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Title screen -->
+<div class="overlay title-screen" id="titleScreen">
+  <div class="title-inner">
+    <svg class="skyline" viewBox="0 0 320 110" aria-hidden="true">
+      <g id="sky"></g>
+    </svg>
+    <h1 class="logo"><span class="l1">Loadshedding</span><span class="l2">Lights</span></h1>
+    <p class="tagline">Turn the wires to get power to every house before the next stage hits.</p>
+    <button class="primary" id="playBtn" style="width:100%">Play level 1</button>
+    <div class="levels-h">Levels</div>
+    <div class="levels" id="levels"></div>
+  </div>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<!-- Result overlay -->
+<div class="overlay" id="result" hidden>
+  <div class="card">
+    <h2 id="resTitle">Lights on!</h2>
+    <div class="stars" id="resStars"></div>
+    <p id="resLine"></p>
+    <button class="primary" id="resPrimary">Next level</button>
+    <button class="ghost" id="resSecondary">Back to menu</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Constants ----------
+  var N = 1, E = 2, S = 4, W = 8;
+  var DIRS = [
+    { b: N, dx: 0, dy: -1, opp: S },
+    { b: E, dx: 1, dy: 0, opp: W },
+    { b: S, dx: 0, dy: 1, opp: N },
+    { b: W, dx: -1, dy: 0, opp: E }
+  ];
+  var ARM = {}; ARM[N] = "50,0"; ARM[E] = "100,50"; ARM[S] = "50,100"; ARM[W] = "0,50";
+
+  var WIN_LINES = [
+    "Lekker! The fridge is humming again.",
+    "The whole street is braaing in the light.",
+    "Not today, loadshedding!",
+    "Kettle's on. Rooibos for everyone.",
+    "Somewhere a gogo just got her soapie back.",
+    "Wi-Fi is back. The kids have stopped complaining."
+  ];
+  var FAIL_LINES = [
+    "Eish. Fetch the candles.",
+    "Lights out. Time to braai in the dark.",
+    "The whole street is using phone torches now.",
+    "The fridge is defrosting. Hurry up, boet!",
+    "Back to playing cards by candlelight."
+  ];
+
+  // ---------- Helpers ----------
+  function rotCW(m) { return ((m << 1) | (m >> 3)) & 15; }
+  function rotBy(m, r) { r = ((r % 4) + 4) % 4; while (r--) m = rotCW(m); return m; }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function pick(arr, rnd) { return arr[Math.floor(rnd() * arr.length)]; }
+  function $(id) { return document.getElementById(id); }
+
+  // ---------- Level config ----------
+  function sizeFor(level) { return level <= 3 ? 4 : level <= 6 ? 5 : level <= 10 ? 6 : 7; }
+  function timeFor(level) {
+    var n = sizeFor(level);
+    var base = { 4: 60, 5: 90, 6: 125, 7: 170 }[n];
+    var first = { 4: 1, 5: 4, 6: 7, 7: 11 }[n];
+    var step = Math.min(level - first, 6);           // gets a bit tighter within each size band
+    return Math.max(base - step * 6, Math.round(base * 0.6));
+  }
+  function stageFor(level) { return Math.min(8, 1 + Math.floor((level - 1) / 2)); }
+
+  // ---------- Puzzle generation ----------
+  // Builds a random spanning tree from the power station (growing-tree algorithm),
+  // so every puzzle is solvable. Leaves of the tree become houses.
+  function generate(level) {
+    var n = sizeFor(level);
+    var rnd = mulberry32(level * 7919 + 1234);
+    var masks = new Array(n * n).fill(0);
+    var seen = new Array(n * n).fill(false);
+    var c = Math.floor(n / 2);
+    var sx = c - (rnd() < .5 ? 1 : 0), sy = c - (rnd() < .5 ? 1 : 0);
+    var src = sy * n + sx;
+    var active = [src]; seen[src] = true;
+    while (active.length) {
+      var idx = rnd() < 0.75 ? active.length - 1 : Math.floor(rnd() * active.length);
+      var cell = active[idx], x = cell % n, y = Math.floor(cell / n);
+      var opts = [];
+      for (var d = 0; d < 4; d++) {
+        var nx = x + DIRS[d].dx, ny = y + DIRS[d].dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        var ni = ny * n + nx;
+        if (!seen[ni]) opts.push([d, ni]);
+      }
+      // avoid crosses / heavy junctions where possible: they make puzzles trivial
+      var deg = bits(masks[cell]);
+      if (!opts.length || (deg >= 3 && rnd() < 0.85)) { active.splice(idx, 1); if (opts.length && deg < 3) {} continue; }
+      var o = pick(opts, rnd);
+      masks[cell] |= DIRS[o[0]].b;
+      masks[o[1]] |= DIRS[o[0]].opp;
+      seen[o[1]] = true;
+      active.push(o[1]);
+    }
+    // Any cell left unvisited (possible because of the junction limit) gets attached to a visited neighbour.
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (var i = 0; i < n * n; i++) {
+        if (seen[i]) continue;
+        var x2 = i % n, y2 = Math.floor(i / n), cand = [];
+        for (var d2 = 0; d2 < 4; d2++) {
+          var ax = x2 + DIRS[d2].dx, ay = y2 + DIRS[d2].dy;
+          if (ax < 0 || ay < 0 || ax >= n || ay >= n) continue;
+          var ai = ay * n + ax;
+          if (seen[ai]) cand.push([d2, ai]);
+        }
+        if (cand.length) {
+          cand.sort(function (a, b) { return bits(masks[a[1]]) - bits(masks[b[1]]); });
+          var cc = cand[0];
+          masks[i] |= DIRS[cc[0]].b; masks[cc[1]] |= DIRS[cc[0]].opp;
+          seen[i] = true; changed = true;
+        }
+      }
+    }
+    var tiles = masks.map(function (m, i) {
+      var kind = i === src ? "station" : bits(m) === 1 ? "house" : "wire";
+      return { base: m, rot: Math.floor(rnd() * 4), kind: kind };
+    });
+    var g = { n: n, src: src, tiles: tiles };
+    // Make sure it doesn't start solved
+    var guard = 0;
+    while (countLit(g, powered(g)) === houseCount(g) && guard++ < 20) {
+      for (var k = 0; k < tiles.length; k++) if (tiles[k].kind === "house") { tiles[k].rot++; break; }
+    }
+    return g;
+  }
+  function bits(m) { return (m & 1) + (m >> 1 & 1) + (m >> 2 & 1) + (m >> 3 & 1); }
+  function maskOf(t) { return rotBy(t.base, t.rot); }
+
+  function powered(g) {
+    var n = g.n, on = new Array(n * n).fill(false), q = [g.src];
+    on[g.src] = true;
+    while (q.length) {
+      var i = q.shift(), m = maskOf(g.tiles[i]), x = i % n, y = Math.floor(i / n);
+      for (var d = 0; d < 4; d++) {
+        if (!(m & DIRS[d].b)) continue;
+        var nx = x + DIRS[d].dx, ny = y + DIRS[d].dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        var ni = ny * n + nx;
+        if (on[ni]) continue;
+        if (maskOf(g.tiles[ni]) & DIRS[d].opp) { on[ni] = true; q.push(ni); }
+      }
+    }
+    return on;
+  }
+  function houseCount(g) { return g.tiles.filter(function (t) { return t.kind === "house"; }).length; }
+  function countLit(g, on) {
+    var c = 0; g.tiles.forEach(function (t, i) { if (t.kind === "house" && on[i]) c++; }); return c;
+  }
+
+  // ---------- Save data ----------
+  var save = { max: 1, stars: {}, sound: true };
+  try { var raw = localStorage.getItem("ll-progress"); if (raw) save = Object.assign(save, JSON.parse(raw)); } catch (e) {}
+  function persist() { try { localStorage.setItem("ll-progress", JSON.stringify(save)); } catch (e) {} }
+
+  // ---------- Sound ----------
+  var ctx = null;
+  function audio() {
+    if (!save.sound) return null;
+    try {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+    } catch (e) { return null; }
+    return ctx;
+  }
+  function tone(freq, start, dur, type, vol, slideTo) {
+    var a = audio(); if (!a) return;
+    var o = a.createOscillator(), gn = a.createGain(), t0 = a.currentTime + start;
+    o.type = type || "square"; o.frequency.setValueAtTime(freq, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    gn.gain.setValueAtTime(vol || 0.06, t0);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(gn); gn.connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  var sfx = {
+    click: function () { tone(520, 0, 0.04, "square", 0.04); },
+    lit: function () { tone(880, 0, 0.12, "triangle", 0.07); tone(1320, 0.05, 0.12, "triangle", 0.05); },
+    win: function () { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.09, 0.22, "triangle", 0.08); }); tone(60, 0, 0.6, "sawtooth", 0.03); },
+    star: function (i) { var f = [988, 1175, 1568][i] || 1568; tone(f, 0, 0.25, "triangle", 0.09); tone(f * 2, 0.04, 0.18, "sine", 0.04); },
+    popper: function () {
+      var a = audio(); if (!a) return;
+      try {
+        var len = a.sampleRate * 0.25, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+        for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+        var src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+        f.type = "highpass"; f.frequency.value = 1200; g.gain.value = 0.25;
+        src.buffer = buf; src.connect(f); f.connect(g); g.connect(a.destination); src.start();
+      } catch (e) {}
+    },
+    fail: function () { tone(220, 0, 0.7, "sawtooth", 0.07, 45); tone(110, 0.05, 0.7, "square", 0.04, 30); }
+  };
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  // ---------- Rendering ----------
+  var boardEl = $("board"), game = null, els = [], state = "menu";
+  var timeLeft = 0, timeTotal = 0, timerId = null, started = false, lastLit = 0, level = 1;
+
+  function armsSVG(m) {
+    var lines = "";
+    [N, E, S, W].forEach(function (b) {
+      if (m & b) lines += '<line x1="50" y1="50" x2="' + ARM[b].split(",")[0] + '" y2="' + ARM[b].split(",")[1] + '"/>';
+    });
+    return '<g class="arms">' +
+      '<g stroke="var(--casing)" stroke-width="22" stroke-linecap="butt">' + lines + '</g>' +
+      '<g class="core" stroke-width="10" stroke-linecap="butt">' + lines + '</g>' +
+      '<circle cx="50" cy="50" r="9" fill="var(--casing)"/>' +
+      '<circle class="core" cx="50" cy="50" r="5" fill="none" stroke-width="10"/>' +
+      '</g>';
+  }
+  function houseSVG() {
+    return '<g>' +
+      '<circle class="glow" cx="50" cy="56" r="34" fill="url(#glowGrad)"/>' +
+      '<path d="M26 52 L50 30 L74 52 Z" fill="#4b5a7c" stroke="var(--casing)" stroke-width="3" stroke-linejoin="round"/>' +
+      '<rect x="31" y="50" width="38" height="26" rx="2" fill="#c9ccd6" stroke="var(--casing)" stroke-width="3"/>' +
+      '<rect class="win" x="36" y="56" width="11" height="10" rx="1"/>' +
+      '<rect class="win" x="53" y="56" width="11" height="10" rx="1"/>' +
+      '</g>';
+  }
+  function stationSVG() {
+    return '<g>' +
+      '<rect x="24" y="24" width="52" height="52" rx="10" fill="#2a3556" stroke="var(--casing)" stroke-width="3"/>' +
+      '<path d="M54 30 L38 54 H50 L46 70 L62 46 H50 Z" fill="var(--live)" stroke="#6b4b00" stroke-width="2" stroke-linejoin="round"/>' +
+      '</g>';
+  }
+  var DEFS = '<defs><radialGradient id="glowGrad"><stop offset="0" stop-color="#ffc63a" stop-opacity=".45"/><stop offset="1" stop-color="#ffc63a" stop-opacity="0"/></radialGradient></defs>';
+
+  function sizeBoard(n) {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var maxW = Math.min(vw - 32, 560);
+    var maxH = vh - 210;
+    var s = Math.max(220, Math.min(maxW, maxH));
+    document.documentElement.style.setProperty("--board", s + "px");
+    document.documentElement.style.setProperty("--n", n);
+  }
+
+  function build() {
+    boardEl.innerHTML = "";
+    boardEl.classList.remove("dark");
+    els = [];
+    sizeBoard(game.n);
+    game.tiles.forEach(function (t, i) {
+      var b = document.createElement("button");
+      b.className = "tile";
+      b.setAttribute("aria-label", t.kind === "station" ? "Power station" : t.kind === "house" ? "House" : "Wire");
+      var top = t.kind === "house" ? houseSVG() : t.kind === "station" ? stationSVG() : "";
+      b.innerHTML =
+        '<svg viewBox="0 0 100 100" aria-hidden="true">' + (i === 0 ? DEFS : "") + armsSVG(t.base) + '</svg>' +
+        (top ? '<svg viewBox="0 0 100 100" aria-hidden="true">' + top + '</svg>' : "");
+      b.addEventListener("click", function () { tap(i); });
+      boardEl.appendChild(b);
+      els.push(b);
+      setRot(i);
+    });
+    refresh(true);
+  }
+  function setRot(i) {
+    var arms = els[i].querySelector(".arms");
+    arms.style.transformOrigin = "50px 50px";
+    arms.style.transform = "rotate(" + (game.tiles[i].rot * 90) + "deg)";
+  }
+
+  function refresh(silent) {
+    var on = powered(game);
+    els.forEach(function (el, i) { el.classList.toggle("on", on[i]); });
+    var lit = countLit(game, on), total = houseCount(game);
+    $("lit").textContent = lit; $("total").textContent = total;
+    if (!silent && lit > lastLit) sfx.lit();
+    lastLit = lit;
+    if (lit === total && state === "play") win();
+  }
+
+  // ---------- Game flow ----------
+  function startLevel(lv) {
+    level = lv;
+    game = generate(lv);
+    state = "play"; started = false; lastLit = 0;
+    timeTotal = timeLeft = timeFor(lv);
+    clearInterval(timerId);
+    $("lvl").textContent = lv;
+    $("stageLbl").textContent = "Stage " + stageFor(lv) + " in";
+    $("meter").classList.remove("urgent");
+    drawTime();
+    $("titleScreen").hidden = true;
+    $("result").hidden = true;
+    build();
+  }
+  function tap(i) {
+    if (state !== "play") return;
+    audio();
+    if (!started) { started = true; timerId = setInterval(tick, 250); }
+    game.tiles[i].rot++;
+    setRot(i);
+    sfx.click(); buzz(8);
+    refresh(false);
+  }
+  var lastTs = 0;
+  function tick() {
+    var now = performance.now();
+    if (!lastTs) lastTs = now;
+    timeLeft -= Math.min(1, (now - lastTs) / 1000);
+    lastTs = now;
+    if (timeLeft <= 0) { timeLeft = 0; drawTime(); fail(); return; }
+    drawTime();
+  }
+  function drawTime() {
+    var t = Math.ceil(timeLeft);
+    $("time").textContent = Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+    $("bar").style.transform = "scaleX(" + (timeTotal ? timeLeft / timeTotal : 1) + ")";
+    $("meter").classList.toggle("urgent", timeLeft <= 10 && timeLeft > 0);
+  }
+  function stopTimer() { clearInterval(timerId); timerId = null; lastTs = 0; }
+
+  function win() {
+    state = "done"; stopTimer();
+    var ratio = timeLeft / timeTotal;
+    var stars = ratio > 0.5 ? 3 : ratio > 0.25 ? 2 : 1;
+    save.stars[level] = Math.max(save.stars[level] || 0, stars);
+    save.max = Math.max(save.max, level + 1);
+    persist();
+    // 1. Party wave: tiles bounce outward from the power station
+    var dist = distances();
+    var maxD = 0;
+    els.forEach(function (el, i) {
+      el.classList.remove("party"); void el.offsetWidth;
+      el.style.setProperty("--d", (dist[i] * 70) + "ms");
+      el.classList.add("party");
+      maxD = Math.max(maxD, dist[i]);
+    });
+    boardEl.classList.remove("celebrate"); void boardEl.offsetWidth; boardEl.classList.add("celebrate");
+    setTimeout(function () { sfx.win(); buzz([20, 40, 20]); }, 150);
+    // 2. Confetti in flag colours + party popper sounds
+    var waveMs = maxD * 70 + 300;
+    setTimeout(function () { confetti(); sfx.popper(); }, Math.min(waveMs, 700));
+    setTimeout(function () { sfx.popper(); }, Math.min(waveMs, 700) + 260);
+    // 3. Result card with stars popping in one by one
+    setTimeout(function () {
+      $("result").classList.remove("fail");
+      $("result").classList.add("win");
+      $("resTitle").textContent = stars === 3 ? "Lekker! Lights on!" : "Lights on!";
+      $("resStars").innerHTML = starRow(stars);
+      $("resStars").hidden = false;
+      for (var s = 0; s < stars; s++) (function (s) { setTimeout(function () { sfx.star(s); }, 150 + s * 300); })(s);
+      $("resLine").textContent = WIN_LINES[Math.floor(Math.random() * WIN_LINES.length)];
+      $("resPrimary").textContent = "Next level";
+      $("resPrimary").onclick = function () { startLevel(level + 1); };
+      $("result").hidden = false;
+    }, Math.min(waveMs, 700) + 700);
+  }
+
+  function distances() {
+    var n = game.n, d = new Array(n * n).fill(0), seen = new Array(n * n).fill(false), q = [game.src];
+    seen[game.src] = true;
+    while (q.length) {
+      var i = q.shift(), x = i % n, y = Math.floor(i / n), m = maskOf(game.tiles[i]);
+      for (var k = 0; k < 4; k++) {
+        if (!(m & DIRS[k].b)) continue;
+        var nx = x + DIRS[k].dx, ny = y + DIRS[k].dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        var ni = ny * n + nx;
+        if (seen[ni] || !(maskOf(game.tiles[ni]) & DIRS[k].opp)) continue;
+        seen[ni] = true; d[ni] = d[i] + 1; q.push(ni);
+      }
+    }
+    return d;
+  }
+
+  // Confetti burst in South African flag colours
+  var confettiRaf = null;
+  function confetti() {
+    try { if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch (e) {}
+    var cv = $("confetti"), c = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+    var W = window.innerWidth, H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var colours = ["#007749", "#FFB612", "#DE3831", "#002395", "#ffffff", "#ffc63a"];
+    var parts = [];
+    function burst(x, y, angle, count) {
+      for (var i = 0; i < count; i++) {
+        var a = angle + (Math.random() - 0.5) * 1.1, sp = 9 + Math.random() * 11;
+        parts.push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+          w: 6 + Math.random() * 6, h: 3 + Math.random() * 5, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+          col: colours[Math.floor(Math.random() * colours.length)], wob: Math.random() * 6 });
+      }
+    }
+    burst(0, H, -Math.PI / 3, 90);          // bottom-left cannon
+    burst(W, H, -Math.PI * 2 / 3, 90);      // bottom-right cannon
+    setTimeout(function () { burst(W / 2, H * 0.35, -Math.PI / 2, 70); }, 350); // mid-air pop
+    var start = performance.now();
+    cancelAnimationFrame(confettiRaf);
+    (function frame(now) {
+      var t = now - start;
+      c.clearRect(0, 0, W, H);
+      parts.forEach(function (p) {
+        p.vy += 0.32; p.vx *= 0.985; p.vy *= 0.985;
+        p.x += p.vx + Math.sin((t / 200) + p.wob) * 0.6; p.y += p.vy; p.r += p.vr;
+        c.save(); c.translate(p.x, p.y); c.rotate(p.r);
+        c.scale(1, Math.cos(t / 120 + p.wob));   // flutter
+        c.fillStyle = p.col; c.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        c.restore();
+      });
+      if (t < 4200) confettiRaf = requestAnimationFrame(frame);
+      else c.clearRect(0, 0, W, H);
+    })(start);
+  }
+  function fail() {
+    state = "done"; stopTimer();
+    boardEl.classList.add("dark");
+    sfx.fail(); buzz(200);
+    setTimeout(function () {
+      $("result").classList.remove("win");
+      $("result").classList.add("fail");
+      $("resTitle").textContent = "Stage " + stageFor(level) + " hit!";
+      $("resStars").hidden = true;
+      $("resLine").textContent = FAIL_LINES[Math.floor(Math.random() * FAIL_LINES.length)];
+      $("resPrimary").textContent = "Try again";
+      $("resPrimary").onclick = function () { startLevel(level); };
+      $("result").hidden = false;
+    }, 900);
+  }
+  function starRow(n) {
+    var p = "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 20.9l1.6-7L2 9.2l7.1-.6z";
+    var s = "";
+    for (var i = 1; i <= 3; i++) s += '<svg viewBox="0 0 24 24"><path class="' + (i <= n ? "s-on" : "s-off") + '" d="' + p + '"/></svg>';
+    return s;
+  }
+
+  // ---------- Menu ----------
+  function showMenu() {
+    state = "menu"; stopTimer();
+    $("result").hidden = true;
+    var next = Math.min(save.max, 99);
+    $("playBtn").textContent = "Play level " + next;
+    $("playBtn").onclick = function () { audio(); startLevel(next); };
+    var lv = $("levels"); lv.innerHTML = "";
+    var show = Math.max(15, Math.ceil(save.max / 5) * 5);
+    for (var i = 1; i <= show; i++) {
+      (function (i) {
+        var b = document.createElement("button");
+        b.className = "lv" + (i === next ? " current" : "");
+        var st = save.stars[i] || 0;
+        b.innerHTML = i + "<small>" + "★★★".slice(0, st) + "</small>";
+        if (i > save.max) b.disabled = true;
+        b.setAttribute("aria-label", "Level " + i + (st ? ", " + st + " stars" : ""));
+        b.onclick = function () { audio(); startLevel(i); };
+        lv.appendChild(b);
+      })(i);
+    }
+    $("titleScreen").hidden = false;
+  }
+
+  // Animated skyline on the title screen
+  function skyline() {
+    var g = $("sky"), html = "", rnd = mulberry32(42), x = 4;
+    while (x < 300) {
+      var w = 26 + Math.floor(rnd() * 18), h = 30 + Math.floor(rnd() * 34), y = 106 - h;
+      html += '<path d="M' + x + ' ' + y + ' L' + (x + w / 2) + ' ' + (y - 14) + ' L' + (x + w) + ' ' + y + ' Z" fill="#26314f"/>';
+      html += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="#1b2540"/>';
+      var cols = Math.max(1, Math.floor((w - 6) / 10));
+      for (var c = 0; c < cols; c++) {
+        for (var r = 0; r < Math.floor((h - 8) / 13); r++) {
+          var delay = (rnd() * 3).toFixed(2);
+          html += '<rect x="' + (x + 5 + c * 10) + '" y="' + (y + 6 + r * 13) + '" width="6" height="7" fill="#ffc63a" opacity="0">' +
+            '<animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;' + (delay / 6).toFixed(2) + ';' + ((+delay + .2) / 6).toFixed(2) + ';.85;1" dur="6s" repeatCount="indefinite"/></rect>';
+        }
+      }
+      x += w + 6 + Math.floor(rnd() * 6);
+    }
+    html += '<rect x="0" y="105" width="320" height="5" fill="#0a0f1a"/>';
+    g.innerHTML = html;
+  }
+
+  // ---------- Wiring up ----------
+  function setSoundIcon() {
+    $("waves").style.display = save.sound ? "" : "none";
+    $("soundBtn").setAttribute("aria-label", save.sound ? "Sound on" : "Sound off");
+  }
+  $("soundBtn").onclick = function () { save.sound = !save.sound; persist(); setSoundIcon(); if (save.sound) sfx.click(); };
+  $("restartBtn").onclick = function () { if (game) startLevel(level); };
+  $("menuBtn").onclick = showMenu;
+  $("resSecondary").onclick = showMenu;
+  window.addEventListener("resize", function () { if (game) sizeBoard(game.n); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) lastTs = 0; });
+
+  setSoundIcon();
+  skyline();
+  sizeBoard(4);
+  game = generate(1); build(); state = "menu";
+  showMenu();
+
+  // exposed for testing
+  window.__LL = { generate: generate, powered: powered, countLit: countLit, houseCount: houseCount, maskOf: maskOf };
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+}
+</script>
+</body>
+</html>
